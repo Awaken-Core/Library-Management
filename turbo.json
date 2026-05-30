@@ -1,0 +1,96 @@
+{
+    "ui": "tui",
+    "globalEnv": [
+        "DATABASE_URL",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "JWT_SECRET",
+        "PORT",
+        "SOCKET_PORT",
+        "NODE_ENV",
+        "APP_URL",
+        "WEB_URL",
+        "SERVER_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "LIVEKIT_URL",
+        "REDIS_HOST",
+        "REDIS_PORT",
+        "REDIS_USERNAME",
+        "REDIS_PASSWORD",
+        "GEMINI_API_KEY",
+        "OPENROUTER_API_KEY",
+        "KAFKA_BROKER",
+        "KAFKA_SSL",
+        "KAFKA_CA_CERT",
+        "KAFKA_CLIENT_CERT",
+        "KAFKA_CLIENT_KEY",
+        "NEXT_PUBLIC_API_BASE",
+        "NEXT_PUBLIC_WEB_URL",
+        "NEXT_PUBLIC_LIVEKIT_URL",
+        "NEXT_PUBLIC_GOOGLE_CLIENT_ID"
+    ],
+    "$schema": "https://turbo.build/schema.json",
+    "concurrency": "20",
+    "tasks": {
+        "build": {
+            "dependsOn": [
+                "^build",
+                "db:generate"
+            ],
+            "inputs": [
+                "$TURBO_DEFAULT$",
+                ".env*"
+            ],
+            "outputs": [
+                ".next/**",
+                "!.next/cache/**",
+                "dist/**"
+            ]
+        },
+        "lint": {
+            "dependsOn": [
+                "^lint"
+            ]
+        },
+        "dev": {
+            "cache": false,
+            "persistent": true
+        },
+        "db:generate": {
+            "cache": false,
+            "outputs": [
+                "node_modules/.prisma/**",
+                "packages/db/node_modules/.prisma/**"
+            ],
+            "env": [
+                "DATABASE_URL"
+            ]
+        },
+        "db:push": {
+            "cache": false,
+            "env": [
+                "DATABASE_URL"
+            ]
+        },
+        "db:migrate": {
+            "cache": false,
+            "env": [
+                "DATABASE_URL"
+            ]
+        },
+        "db:migrate_dev": {
+            "cache": false,
+            "env": [
+                "DATABASE_URL"
+            ]
+        },
+        "db:studio": {
+            "cache": false,
+            "persistent": true,
+            "env": [
+                "DATABASE_URL"
+            ]
+        }
+    }
+}

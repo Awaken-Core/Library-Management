@@ -3,10 +3,12 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { client } from "@repo/db";
 import { server_env as env } from "@repo/env";
+import authRouter from "./routes/auth.route.js";
+import studentRouter from "./routes/student.route.js";
 
 const app = express();
 
-const allowedOrigins = [env.WEB_URL,].filter(
+const allowedOrigins = [env.WEB_URL, env.ADMIN_URL].filter(
     (origin): origin is string => Boolean(origin),
 );
 
@@ -26,6 +28,9 @@ app.use(
 
 app.use(express.json())
 app.use(cookieParser())
+
+app.use("/api/auth", authRouter);
+app.use("/api/students", studentRouter);
 
 app.get('/health', (_req, res) => {
     res.send("All Good!")

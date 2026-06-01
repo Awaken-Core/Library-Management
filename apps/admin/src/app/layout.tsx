@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Console Me",
-  description: "Console Me social experience",
+  title: "Library Management — Admin Panel",
+  description: "Admin panel for Library Management System",
 };
 
 export default function RootLayout({

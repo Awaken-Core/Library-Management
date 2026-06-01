@@ -9,6 +9,7 @@
     "start": "node --import tsx src/index.ts"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/bun": "latest",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -21,15 +22,13 @@
   "dependencies": {
     "@repo/db": "workspace:*",
     "@repo/env": "workspace:*",
+    "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "google-auth-library": "^10.6.2",
     "jsonwebtoken": "^9.0.3",
-    "livekit-server-sdk": "^2.15.0",
     "nodemon": "^3.1.11",
     "tsx": "^4.21.0",
-    "zod": "^4.3.6"
+    "zod": "^3.23.8"
   }
 }

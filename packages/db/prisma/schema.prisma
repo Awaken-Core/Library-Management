@@ -7,24 +7,230 @@ datasource db {
 }
 
 enum Role {
-  USER
+  USER //member's of library
   ADMIN
 }
 
+enum SubscriptionPlan {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum NotificationType {
+  BORROW_APPROVED
+  BORROW_REJECTED
+  RETURN_REMINDER
+  PENALTY_NOTICE
+}
+
+enum BorrowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RETURNED
+}
+
+enum BookCopyStatus {
+  AVAILABLE
+  BORROWED
+  LOST
+  DAMAGED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
 model User {
-  id                 String    @id @default(uuid())
-  name               String
-  email              String    @unique
-  phoneNo            String    @unique
-  password           String
-  emailVerified      Boolean   @default(false)
-  photo              String?
-  bio                String?
-  role               Role      @default(USER)
-  isBanned           Boolean   @default(false)
-  passwordChangedAt  DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String         @id @default(uuid())
+  name              String
+  email             String         @unique
+  phoneNo           String         @unique
+  password          String
+  emailVerified     Boolean        @default(false)
+  photo             String?
+  bio               String?
+  role              Role           @default(USER)
+  isBanned          Boolean        @default(false)
+  passwordChangedAt DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  subscriptions     Subscription[]
+  notifications     Notification[]
+  borrowsUser       Borrow[]       @relation("User")
+  borrowsGrantor    Borrow[]       @relation("Grantor")
+  fees              Fees[]
+  penalties         Penalty[]
+  payments          Payments[]
 
   @@map("user")
+}
+
+model Books {
+  id          String     @id @default(uuid())
+  isbn        String     @unique
+  title       String
+  author      String
+  description String?
+  publisher   String?
+  edition     String?
+  language    String?
+  publishedAt DateTime
+  bookCopies  BookCopy[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("books")
+}
+
+model BookCopy {
+  id          String         @id @default(uuid())
+  bookId      String
+  book        Books          @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  barcode     String         @unique
+  status      BookCopyStatus @default(AVAILABLE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  borrowBooks BorrowItems[]
+
+  @@map("book_copy")
+}
+
+model TimeSlot {
+  id            String      @id @default(uuid())
+  hoursDuration Int // In Hours
+  isReserved    Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  studyPlans    StudyPlan[]
+
+  @@map("time_slot")
+}
+
+model StudyPlan {
+  id            String           @id @default(uuid())
+  plan          SubscriptionPlan
+  timeSlotId    String
+  timeSlot      TimeSlot         @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([plan, timeSlotId])
+  @@map("study_plan")
+}
+
+model Subscription {
+  id          String    @id @default(uuid())
+  userId      String
+  studyplanId String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studyplan   StudyPlan @relation(fields: [studyplanId], references: [id], onDelete: Cascade)
+  startDate   DateTime  @default(now())
+  endDate     DateTime
+  fees        Fees[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("subscription")
+}
+
+model Fees {
+  id             String       @id @default(uuid())
+  userId         String
+  subscriptionId String
+  amount         Decimal      @db.Decimal(10, 2)
+  user           User         @relation(fields: [userId], references: [id])
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  payments       Payments[]
+
+  @@map("fees")
+}
+
+model Penalty {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  amount    Decimal    @db.Decimal(10, 2)
+  reason    String     @db.VarChar(500)
+  paid      Boolean    @default(false)
+  borrowId  String     @unique
+  borrow    Borrow     @relation(fields: [borrowId], references: [id])
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  payments  Payments[]
+
+  @@map("penalty")
+}
+
+model Payments {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  amount Decimal       @db.Decimal(10, 2)
+  status PaymentStatus @default(PENDING)
+
+  penaltyId String?
+  feesId    String?
+
+  penalty Penalty? @relation(fields: [penaltyId], references: [id])
+  fees    Fees?    @relation(fields: [feesId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payments")
+}
+
+model Borrow {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation("User", fields: [userId], references: [id])
+  grantedBy   String? //admin who granted the borrow request (id) -> ( on Approved )
+  grantor     User?         @relation("Grantor", fields: [grantedBy], references: [id])
+  penalty     Penalty?
+  status      BorrowStatus  @default(PENDING)
+  borrowDate  DateTime      @default(now())
+  grantDate   DateTime?
+  returnDate  DateTime? // The day it needs to be returned
+  returnedOn  DateTime? // The day borrowed books got returned back
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  borrowBooks BorrowItems[]
+
+  @@map("borrow")
+}
+
+model BorrowItems {
+  borrowId  String
+  bookId    String
+  borrow    Borrow   @relation(fields: [borrowId], references: [id])
+  book      BookCopy @relation(fields: [bookId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([borrowId, bookId])
+  @@map("borrow_books")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  type      NotificationType
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@map("notification")
 }

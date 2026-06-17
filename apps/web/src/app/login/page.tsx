@@ -6,6 +6,7 @@ import { useAuthStore } from "../../store/auth.store";
 import { api } from "../../lib/api";
 import { motion } from "framer-motion";
 import { BookOpen, Mail, Lock, ArrowRight, Loader2, GraduationCap } from "lucide-react";
+import Link from "next/link";
 
 export default function StudentLoginPage() {
     const router = useRouter();
@@ -91,7 +92,12 @@ export default function StudentLoginPage() {
                         </div>
                         
                         <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Password</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Password</label>
+                                <Link href="/forgot-password" className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                                    Forgot password?
+                                </Link>
+                            </div>
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
                                     <Lock className="w-5 h-5" />

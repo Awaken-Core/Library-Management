@@ -14,15 +14,17 @@ import {
     Library,
     Menu,
     X,
-    Loader2
+    Loader2,
+    CircleDollarSign
 } from "lucide-react";
 import { useState } from "react";
 
 const NAV_ITEMS = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Students", href: "/students/create", icon: Users },
-    { name: "Inventory", href: "#", icon: BookOpen },
-    { name: "Settings", href: "#", icon: Settings },
+    { name: "Inventory", href: "/inventory", icon: BookOpen },
+    { name: "Students", href: "/students", icon: Users },
+    { name: "Requests", href: "/requests", icon: Settings },
+    { name: "Penalties", href: "/penalties", icon: CircleDollarSign },
 ];
 
 export default function RootLayout({

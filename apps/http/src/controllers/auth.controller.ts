@@ -3,6 +3,9 @@ import { client } from "@repo/db";
 import { hashPassword, comparePassword } from "../utils/password.js";
 import { signToken } from "../utils/jwt.js";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
+import { server_env as env } from "@repo/env";
+
 
 const setupSchema = z.object({
     name: z.string().min(2),
@@ -113,5 +116,79 @@ export const login = async (req: Request, res: Response) => {
             return;
         }
         res.status(500).json({ message: "Internal server error" });
+    }
+};
+
+const forgotPasswordSchema = z.object({
+    email: z.string().email(),
+    phoneNo: z.string().min(10),
+});
+
+export const forgotPassword = async (req: Request, res: Response) => {
+    try {
+        const data = forgotPasswordSchema.parse(req.body);
+
+        const user = await client.user.findFirst({
+            where: { email: data.email, phoneNo: data.phoneNo, isBanned: false },
+        });
+
+        if (!user) {
+            res.status(404).json({ success: false, message: "User not found with matching email and phone number" });
+            return;
+        }
+
+        // Generate a temporary reset token (valid for 15 minutes)
+        const resetToken = jwt.sign({ id: user.id, reset: true }, env.JWT_SECRET, { expiresIn: "15m" });
+
+
+        res.json({ success: true, message: "Verification successful. Please check server console/logs for reset token." });
+    } catch (error: any) {
+        console.error("forgotPassword error:", error);
+        if (error instanceof z.ZodError) {
+            res.status(400).json({ success: false, message: "Invalid input data", errors: error.errors });
+            return;
+        }
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+
+const resetPasswordSchema = z.object({
+    resetToken: z.string(),
+    newPassword: z.string().min(6),
+});
+
+export const resetPassword = async (req: Request, res: Response) => {
+    try {
+        const data = resetPasswordSchema.parse(req.body);
+
+        // Verify token
+        let decoded: any;
+        try {
+            decoded = jwt.verify(data.resetToken, env.JWT_SECRET);
+        } catch (err) {
+            res.status(401).json({ success: false, message: "Invalid or expired reset token" });
+            return;
+        }
+
+        if (!decoded || !decoded.reset || !decoded.id) {
+            res.status(401).json({ success: false, message: "Invalid token payload" });
+            return;
+        }
+
+        const hashedPassword = await hashPassword(data.newPassword);
+
+        await client.user.update({
+            where: { id: decoded.id },
+            data: { password: hashedPassword, passwordChangedAt: new Date() },
+        });
+
+        res.json({ success: true, message: "Password updated successfully" });
+    } catch (error: any) {
+        console.error("resetPassword error:", error);
+        if (error instanceof z.ZodError) {
+            res.status(400).json({ success: false, message: "Invalid input data", errors: error.errors });
+            return;
+        }
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };

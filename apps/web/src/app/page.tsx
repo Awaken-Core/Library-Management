@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useAuthStore } from "../store/auth.store";
 import { motion } from "framer-motion";
 import { BookOpen, Search, ArrowRight, BookMarked, CalendarClock, Loader2 } from "lucide-react";
-import { api } from "../lib/api";
 import Link from "next/link";
+import { useBooksQuery } from "../hooks/queries/useBooks";
+import { useMyBorrowsQuery } from "../hooks/queries/useBorrows";
 
 type Book = {
     id: string;
@@ -34,47 +35,21 @@ type Borrow = {
 
 export default function DashboardPage() {
     const { user } = useAuthStore();
-    const [books, setBooks] = useState<Book[]>([]);
-    const [borrows, setBorrows] = useState<Borrow[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
-    const [loadingBooks, setLoadingBooks] = useState(true);
-    const [loadingBorrows, setLoadingBorrows] = useState(true);
-
-    const fetchBooks = async () => {
-        try {
-            setLoadingBooks(true);
-            const res = await api.get(`/books${searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : ''}`);
-            setBooks(res.data.data);
-        } catch (error) {
-            console.error("Failed to fetch books", error);
-        } finally {
-            setLoadingBooks(false);
-        }
-    };
-
-    const fetchBorrows = async () => {
-        try {
-            setLoadingBorrows(true);
-            const res = await api.get(`/borrows/my`);
-            setBorrows(res.data.data);
-        } catch (error) {
-            console.error("Failed to fetch borrows", error);
-        } finally {
-            setLoadingBorrows(false);
-        }
-    };
+    const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
     useEffect(() => {
-        const delayDebounceFn = setTimeout(() => {
-            fetchBooks();
-        }, 300);
-
-        return () => clearTimeout(delayDebounceFn);
+        const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+        return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    useEffect(() => {
-        fetchBorrows();
-    }, []);
+    const { data: booksData, isLoading: loadingBooks } = useBooksQuery(
+        debouncedSearchTerm ? { search: debouncedSearchTerm } : undefined
+    );
+    const books: Book[] = booksData?.data || [];
+
+    const { data: borrowsData, isLoading: loadingBorrows } = useMyBorrowsQuery();
+    const borrows: Borrow[] = borrowsData?.data || [];
 
     const activeBorrows = borrows.filter(b => b.status === "APPROVED" && !b.returnedOn);
     const totalBorrowedBooks = activeBorrows.reduce((sum, b) => sum + b.borrowBooks.length, 0);

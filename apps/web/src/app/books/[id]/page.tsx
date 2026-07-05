@@ -17,7 +17,8 @@ import {
     Check
 } from "lucide-react";
 import Link from "next/link";
-import { api } from "../../../lib/api";
+import { useBookDetailsQuery } from "../../../hooks/queries/useBooks";
+import { useBorrowBookMutation } from "../../../hooks/queries/useBorrows";
 
 interface BookDetails {
     id: string;
@@ -35,58 +36,36 @@ interface BookDetails {
 export default function StudentBookDetailsPage() {
     const { id } = useParams();
     const router = useRouter();
+    const idParam = Array.isArray(id) ? id[0] : (id as string);
+
+    const { data: queryData, isLoading: loading, error: queryError } = useBookDetailsQuery(idParam || "", { enabled: !!idParam });
+    const bookData = queryData?.data;
+    const error = queryError ? ((queryError as any).response?.data?.message || (queryError as any).message || "Failed to load book details") : "";
 
     const [book, setBook] = useState<BookDetails | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [borrowing, setBorrowing] = useState(false);
-    const [successMessage, setSuccessMessage] = useState("");
-
-    const fetchBookDetails = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await api.get(`/books/${id}`);
-            if (res.data.success) {
-                setBook(res.data.data);
-            } else {
-                setError(res.data.message || "Failed to load book details");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to load book details");
-        } finally {
-            setLoading(false);
-        }
-    }, [id]);
-
+    
     useEffect(() => {
-        if (id) {
-            fetchBookDetails();
+        if (bookData) {
+            setBook(bookData);
         }
-    }, [id, fetchBookDetails]);
+    }, [bookData]);
+
+    const { mutateAsync: requestBorrow, isPending: borrowing } = useBorrowBookMutation();
+    const [borrowError, setBorrowError] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
 
     const handleBorrowRequest = async () => {
         if (!book || book.availableCopies <= 0) return;
         
-        setBorrowing(true);
-        setError("");
+        setBorrowError("");
         setSuccessMessage("");
         
         try {
-            const res = await api.post("/borrows", {
-                bookIds: [book.id]
-            });
-            if (res.data.success) {
-                setSuccessMessage("Borrow request submitted successfully! Awaiting administrator approval.");
-                // Decrement copies locally to give immediate visual feedback
-                setBook(prev => prev ? { ...prev, availableCopies: prev.availableCopies - 1 } : null);
-            } else {
-                setError(res.data.message || "Failed to submit borrow request");
-            }
+            await requestBorrow(book.id);
+            setSuccessMessage("Borrow request submitted successfully! Awaiting administrator approval.");
+            setBook(prev => prev ? { ...prev, availableCopies: prev.availableCopies - 1 } : null);
         } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to submit borrow request");
-        } finally {
-            setBorrowing(false);
+            setBorrowError(err.response?.data?.message || err.message || "Failed to submit borrow request");
         }
     };
 
@@ -147,10 +126,10 @@ export default function StudentBookDetailsPage() {
                     </div>
                 </div>
             )}
-            {error && (
+            {borrowError && (
                 <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-2xl flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm font-medium">{error}</p>
+                    <p className="text-sm font-medium">{borrowError}</p>
                 </div>
             )}
 

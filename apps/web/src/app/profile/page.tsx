@@ -14,7 +14,7 @@ import {
     Lock,
     KeyRound
 } from "lucide-react";
-import { api } from "../../lib/api";
+import { useStudentProfileQuery, useUpdateProfileMutation, useChangePasswordMutation } from "../../hooks/queries/useStudent";
 
 type UserProfile = {
     id: string;
@@ -34,42 +34,32 @@ type UserProfile = {
 };
 
 export default function ProfilePage() {
-    const [profile, setProfile] = useState<UserProfile | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const { data: queryData, isLoading: loading, error: queryError } = useStudentProfileQuery();
+    const profile = queryData?.data || null;
+    const error = queryError ? ((queryError as any).response?.data?.message || (queryError as any).message || "Failed to load profile") : "";
 
     // Profile edit states
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState("");
     const [editPhone, setEditPhone] = useState("");
-    const [savingProfile, setSavingProfile] = useState(false);
     const [profileStatus, setProfileStatus] = useState<{ type: "success" | "error" | null, message: string }>({ type: null, message: "" });
+
+    const { mutateAsync: updateProfile, isPending: savingProfile } = useUpdateProfileMutation();
 
     // Password change states
     const [currentPassword, setCurrentPassword] = useState("");
     const [newPassword, setNewPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [savingPassword, setSavingPassword] = useState(false);
     const [passwordStatus, setPasswordStatus] = useState<{ type: "success" | "error" | null, message: string }>({ type: null, message: "" });
 
-    const fetchProfile = async () => {
-        try {
-            setLoading(true);
-            const res = await api.get('/students/me');
-            const data = res.data.data;
-            setProfile(data);
-            setEditName(data.name);
-            setEditPhone(data.phoneNo);
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to load profile");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { mutateAsync: changePassword, isPending: savingPassword } = useChangePasswordMutation();
 
     useEffect(() => {
-        fetchProfile();
-    }, []);
+        if (profile && !isEditing) {
+            setEditName(profile.name);
+            setEditPhone(profile.phoneNo);
+        }
+    }, [profile]);
 
     const handleEditToggle = () => {
         if (isEditing && profile) {
@@ -83,27 +73,17 @@ export default function ProfilePage() {
 
     const handleSaveProfile = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSavingProfile(true);
         setProfileStatus({ type: null, message: "" });
 
         try {
-            const res = await api.put("/students/me", {
-                name: editName,
-                phoneNo: editPhone
-            });
-            if (res.data.success) {
-                setProfileStatus({ type: "success", message: "Profile details updated successfully." });
-                setIsEditing(false);
-                // Refresh local profile
-                setProfile(prev => prev ? { ...prev, name: editName, phoneNo: editPhone } : null);
-            }
+            await updateProfile({ name: editName, phoneNo: editPhone });
+            setProfileStatus({ type: "success", message: "Profile details updated successfully." });
+            setIsEditing(false);
         } catch (err: any) {
             setProfileStatus({
                 type: "error",
                 message: err.response?.data?.message || "Failed to update profile details."
             });
-        } finally {
-            setSavingProfile(false);
         }
     };
 
@@ -116,25 +96,17 @@ export default function ProfilePage() {
             return;
         }
 
-        setSavingPassword(true);
         try {
-            const res = await api.patch("/students/me/password", {
-                currentPassword,
-                newPassword
-            });
-            if (res.data.success) {
-                setPasswordStatus({ type: "success", message: "Password updated successfully." });
-                setCurrentPassword("");
-                setNewPassword("");
-                setConfirmPassword("");
-            }
+            await changePassword({ currentPassword, newPassword });
+            setPasswordStatus({ type: "success", message: "Password updated successfully." });
+            setCurrentPassword("");
+            setNewPassword("");
+            setConfirmPassword("");
         } catch (err: any) {
             setPasswordStatus({
                 type: "error",
                 message: err.response?.data?.message || "Failed to change password. Make sure current password is correct."
             });
-        } finally {
-            setSavingPassword(false);
         }
     };
 
@@ -158,7 +130,7 @@ export default function ProfilePage() {
         );
     }
 
-    const pendingPenalties = profile.penalties.reduce((sum, penalty) => sum + parseFloat(penalty.amount), 0);
+    const pendingPenalties = profile.penalties.reduce((sum: number, penalty: any) => sum + parseFloat(penalty.amount), 0);
     const hasActiveSubscription = profile.subscriptions.length > 0;
 
     return (

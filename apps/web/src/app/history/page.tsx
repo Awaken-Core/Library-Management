@@ -14,7 +14,7 @@ import {
     CreditCard
 } from "lucide-react";
 import Link from "next/link";
-import { api } from "../../lib/api";
+import { useMyBorrowsQuery } from "../../hooks/queries/useBorrows";
 
 interface BookDetail {
     id: string;
@@ -51,49 +51,47 @@ interface BorrowRecord {
 }
 
 export default function HistoryPage() {
-    const [borrows, setBorrows] = useState<BorrowRecord[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: queryData, isLoading: loading, error: queryError } = useMyBorrowsQuery();
+    const borrows = queryData?.data || [];
+    
     const [error, setError] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
 
-    const fetchMyBorrows = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await api.get("/borrows/my");
-            if (res.data.success) {
-                setBorrows(res.data.data || []);
-            } else {
-                setError(res.data.message || "Failed to load history");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to load history");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
     useEffect(() => {
-        fetchMyBorrows();
-    }, [fetchMyBorrows]);
+        if (queryError) {
+            setError((queryError as any).response?.data?.message || (queryError as any).message || "Failed to load history");
+        } else {
+            setError("");
+        }
+    }, [queryError]);
 
-    // Filter to history (RETURNED & REJECTED)
-    const historyRecords = borrows.filter(b => b.status === "RETURNED" || b.status === "REJECTED");
+    const activeBorrows = borrows.filter((b: BorrowRecord) => b.status === "APPROVED");
+    const returnedBorrows = borrows.filter((b: BorrowRecord) => b.status === "RETURNED");
+    
+    const overdueBorrows = activeBorrows.filter((b: BorrowRecord) => {
+        if (!b.returnDate) return false;
+        return new Date(b.returnDate) < new Date();
+    });
 
-    // Filter by search query
-    const filteredHistory = historyRecords.filter(b => {
-        const bookTitles = b.borrowBooks.map(bb => bb.book?.book?.title?.toLowerCase() || "").join(" ");
-        const bookAuthors = b.borrowBooks.map(bb => bb.book?.book?.author?.toLowerCase() || "").join(" ");
-        const barcode = b.borrowBooks.map(bb => bb.book?.barcode?.toLowerCase() || "").join(" ");
+    const historyRecords = borrows.filter((b: BorrowRecord) => b.status === "RETURNED" || b.status === "REJECTED");
+
+    const filteredHistory = historyRecords.filter((b: BorrowRecord) => {
+        const bookTitles = (b.borrowBooks || []).map((bb: BorrowBook) => bb.book?.book?.title?.toLowerCase() || "").join(" ");
+        const bookAuthors = (b.borrowBooks || []).map((bb: BorrowBook) => bb.book?.book?.author?.toLowerCase() || "").join(" ");
+        const barcode = (b.borrowBooks || []).map((bb: BorrowBook) => bb.book?.barcode?.toLowerCase() || "").join(" ");
         const query = searchQuery.toLowerCase();
         return bookTitles.includes(query) || bookAuthors.includes(query) || barcode.includes(query);
     });
 
-    // Calculate history stats
+    const currentRecords = filteredHistory;
+
     const stats = {
-        returned: historyRecords.filter(b => b.status === "RETURNED").reduce((sum, b) => sum + b.borrowBooks.length, 0),
-        rejected: historyRecords.filter(b => b.status === "REJECTED").length,
-        totalFines: historyRecords.reduce((sum, b) => sum + (b.penalty ? Number(b.penalty.amount) : 0), 0)
+        returned: returnedBorrows.reduce((sum: number, b: BorrowRecord) => sum + (b.borrowBooks?.length || 0), 0),
+        rejected: historyRecords.filter((b: BorrowRecord) => b.status === "REJECTED").length,
+        totalFines: returnedBorrows.reduce((sum: number, b: BorrowRecord) => {
+            const amount = b.penalty?.amount;
+            return sum + (amount || 0);
+        }, 0)
     };
 
     const formatDate = (dateStr: string | null) => {
@@ -118,7 +116,6 @@ export default function HistoryPage() {
                     </p>
                 </div>
                 
-                {/* Search Bar */}
                 <div className="relative w-full md:w-80">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
                     <input
@@ -131,7 +128,6 @@ export default function HistoryPage() {
                 </div>
             </div>
 
-            {/* Metrics cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
                     <div className="p-3.5 bg-green-50 text-green-600 dark:bg-green-950/20 dark:text-green-400 rounded-2xl">
@@ -164,7 +160,6 @@ export default function HistoryPage() {
                 </div>
             </div>
 
-            {/* Content list */}
             {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800">
                     <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
@@ -175,11 +170,11 @@ export default function HistoryPage() {
                     <AlertCircle className="w-8 h-8 mx-auto mb-3" />
                     <h3 className="font-semibold text-lg">Error loading history</h3>
                     <p className="text-sm mt-1">{error}</p>
-                    <button onClick={fetchMyBorrows} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
+                    <button onClick={() => window.location.reload()} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
                         Try Again
                     </button>
                 </div>
-            ) : filteredHistory.length === 0 ? (
+            ) : currentRecords.length === 0 ? (
                 <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden py-16 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4 text-zinc-400">
                         <History className="w-8 h-8" />
@@ -203,13 +198,12 @@ export default function HistoryPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                                {filteredHistory.map((record) => {
+                                {currentRecords.map((record: any) => {
                                     const isReturned = record.status === "RETURNED";
                                     const isRejected = record.status === "REJECTED";
 
                                     return (
                                         <tr key={record.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors">
-                                            {/* Status Badge */}
                                             <td className="px-6 py-5">
                                                 <div className="flex flex-col gap-1 items-start">
                                                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${isReturned ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-red-50 text-red-700 border-red-200"}`}>
@@ -219,10 +213,9 @@ export default function HistoryPage() {
                                                 </div>
                                             </td>
 
-                                            {/* Book information */}
                                             <td className="px-6 py-5 max-w-xs md:max-w-sm">
                                                 <div className="space-y-2">
-                                                    {record.borrowBooks.map((bb, idx) => {
+                                                    {(record.borrowBooks || []).map((bb: BorrowBook, idx: number) => {
                                                         const bookTitle = bb.book?.book?.title || "Unknown Book";
                                                         const bookAuthor = bb.book?.book?.author || "Unknown Author";
                                                         const bookBarcode = bb.book?.barcode || "-";

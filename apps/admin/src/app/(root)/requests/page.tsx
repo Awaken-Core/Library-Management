@@ -17,6 +17,7 @@ import {
     CalendarClock
 } from "lucide-react";
 import { api } from "../../../lib/api";
+import AlertModal from "../components/AlertModal";
 
 interface BookDetail {
     id: string;
@@ -75,6 +76,22 @@ export default function RequestsPage() {
     const [dueDate, setDueDate] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
+    const [alertConfig, setAlertConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'success' | 'error' | 'info' | 'warning';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        type: 'info'
+    });
+
+    const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+        setAlertConfig({ isOpen: true, title, message, type });
+    };
+
     const fetchBorrows = useCallback(async () => {
         setLoading(true);
         setError("");
@@ -122,10 +139,10 @@ export default function RequestsPage() {
         setSubmitting(true);
         try {
             await api.patch(`/admin/borrows/${id}/reject`);
-            alert("Borrow request rejected.");
+            showAlert("Success", "Borrow request rejected.", "success");
             fetchBorrows();
         } catch (err: any) {
-            alert(err.response?.data?.message || "Failed to reject request");
+            showAlert("Error", err.response?.data?.message || "Failed to reject request", "error");
         } finally {
             setSubmitting(false);
         }
@@ -136,10 +153,10 @@ export default function RequestsPage() {
         setSubmitting(true);
         try {
             const res = await api.post(`/admin/borrows/${id}/return`);
-            alert(res.data.message || "Books marked as returned.");
+            showAlert("Success", res.data.message || "Books marked as returned.", "success");
             fetchBorrows();
         } catch (err: any) {
-            alert(err.response?.data?.message || "Failed to process return");
+            showAlert("Error", err.response?.data?.message || "Failed to process return", "error");
         } finally {
             setSubmitting(false);
         }
@@ -163,10 +180,10 @@ export default function RequestsPage() {
             });
             setIsApproveModalOpen(false);
             setSelectedBorrowId(null);
-            alert("Borrow request approved!");
+            showAlert("Success", "Borrow request approved!", "success");
             fetchBorrows();
         } catch (err: any) {
-            alert(err.response?.data?.message || "Failed to approve request");
+            showAlert("Error", err.response?.data?.message || "Failed to approve request", "error");
         } finally {
             setSubmitting(false);
         }
@@ -493,6 +510,13 @@ export default function RequestsPage() {
                     </div>
                 </div>
             )}
+            <AlertModal
+                isOpen={alertConfig.isOpen}
+                onClose={() => setAlertConfig(prev => ({ ...prev, isOpen: false }))}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                type={alertConfig.type}
+            />
         </div>
     );
 }

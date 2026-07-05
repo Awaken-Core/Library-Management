@@ -34,7 +34,10 @@ export default function ForgotPasswordPage() {
             setLoading(true);
             const res = await api.post("/auth/forgot-password", { email, phoneNo });
             setStep(2);
-            setSuccess("Identity verified. Please copy the reset token from the server console and enter it below.");
+            setSuccess(`Identity verified. Temporary reset token: ${res.data.resetToken}`);
+            if (res.data.resetToken) {
+                setResetToken(res.data.resetToken);
+            }
         } catch (err: any) {
             setError(err.response?.data?.message || err.message || "Verification failed");
         } finally {

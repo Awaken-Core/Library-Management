@@ -139,9 +139,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
         // Generate a temporary reset token (valid for 15 minutes)
         const resetToken = jwt.sign({ id: user.id, reset: true }, env.JWT_SECRET, { expiresIn: "15m" });
+        
+        console.log("=========================================");
+        console.log("PASSWORD RESET TOKEN:", resetToken);
+        console.log("=========================================");
 
-
-        res.json({ success: true, message: "Verification successful. Please check server console/logs for reset token." });
+        res.json({ success: true, message: "Verification successful.", resetToken });
     } catch (error: any) {
         console.error("forgotPassword error:", error);
         if (error instanceof z.ZodError) {

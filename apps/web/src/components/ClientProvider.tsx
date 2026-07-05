@@ -2,12 +2,14 @@
 
 import { useAuthGuard } from "../hooks/useAuthGuard";
 import { useAuthStore } from "../store/auth.store";
+import { useUIStore } from "../store/ui.store";
+import { useNotificationsQuery, useMarkNotificationReadMutation, useMarkAllNotificationsReadMutation } from "../hooks/queries/useNotifications";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, UserCircle, History, LogOut, Menu, X, Loader2, Search, Bell, BellRing, Check, MailOpen } from "lucide-react";
-import { useState, useEffect } from "react";
-import { api } from "../lib/api";
+import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const NAV_ITEMS = [
     { name: "Browse Collection", href: "/", icon: Search },
@@ -23,55 +25,33 @@ export function ClientProvider({
 }) {
     const pathname = usePathname();
     const router = useRouter();
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     
-    // Notifications state
-    const [notifications, setNotifications] = useState<any[]>([]);
-    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    // UI State from Zustand
+    const { isMobileMenuOpen, isNotificationsOpen, toggleMobileMenu, toggleNotifications, setNotificationsOpen, closeAll } = useUIStore();
     
+    // React Query client
+    const [queryClient] = useState(() => new QueryClient({
+        defaultOptions: {
+            queries: {
+                staleTime: 60 * 1000, // 1 minute
+                refetchOnWindowFocus: false,
+            },
+        },
+    }));
+
     // Skip guard for login page
     const isLoginPage = pathname === "/login";
     
     const { isHydrated, isAuthenticated } = useAuthGuard();
     const { user, logout } = useAuthStore();
 
-    const fetchNotifications = async () => {
-        try {
-            const res = await api.get("/notifications");
-            if (res.data.success) {
-                setNotifications(res.data.data || []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch notifications", error);
-        }
-    };
+    const { data: notificationsData } = useNotificationsQuery(isAuthenticated);
+    const notifications = notificationsData || [];
+    const { mutate: markRead } = useMarkNotificationReadMutation();
+    const { mutate: markAllRead } = useMarkAllNotificationsReadMutation();
 
-    useEffect(() => {
-        if (isAuthenticated) {
-            fetchNotifications();
-            // Poll for notifications every 30 seconds
-            const interval = setInterval(fetchNotifications, 30000);
-            return () => clearInterval(interval);
-        }
-    }, [isAuthenticated]);
-
-    const markAsRead = async (id: string) => {
-        try {
-            await api.patch(`/notifications/${id}/read`);
-            setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-        } catch (error) {
-            console.error("Failed to mark read", error);
-        }
-    };
-
-    const markAllNotificationsRead = async () => {
-        try {
-            await api.patch("/notifications/read-all");
-            setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-        } catch (error) {
-            console.error("Failed to mark all read", error);
-        }
-    };
+    const markAsRead = (id: string) => markRead(id);
+    const markAllNotificationsRead = () => markAllRead();
 
     const formatTimeAgo = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -87,7 +67,7 @@ export function ClientProvider({
         return `${diffDays}d ago`;
     };
 
-    const unreadCount = notifications.filter(n => !n.read).length;
+    const unreadCount = notifications.filter((n: any) => !n.read).length;
 
     if (!isHydrated) {
         return (
@@ -111,7 +91,8 @@ export function ClientProvider({
     };
 
     return (
-        <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
+        <QueryClientProvider client={queryClient}>
+            <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
             {/* Top Navigation */}
             <header className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -144,7 +125,7 @@ export function ClientProvider({
                         {/* Notification Bell */}
                         <div className="relative">
                             <button 
-                                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                                onClick={toggleNotifications}
                                 className={`p-2 rounded-full transition-colors relative hover:bg-zinc-100 dark:hover:bg-zinc-800 ${isNotificationsOpen ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white" : "text-zinc-600 dark:text-zinc-400"}`}
                             >
                                 {unreadCount > 0 ? (
@@ -163,7 +144,7 @@ export function ClientProvider({
                             <AnimatePresence>
                                 {isNotificationsOpen && (
                                     <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)}></div>
+                                        <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)}></div>
                                         <motion.div 
                                             initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -189,7 +170,7 @@ export function ClientProvider({
                                                         No notifications yet.
                                                     </div>
                                                 ) : (
-                                                    notifications.map((n) => (
+                                                    notifications.map((n: any) => (
                                                         <div 
                                                             key={n.id} 
                                                             onClick={() => {
@@ -236,7 +217,7 @@ export function ClientProvider({
                         {/* Mobile menu button */}
                         <button 
                             className="md:hidden p-2 -mr-2 text-zinc-600 dark:text-zinc-400"
-                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            onClick={toggleMobileMenu}
                         >
                             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
                         </button>
@@ -254,7 +235,7 @@ export function ClientProvider({
                                 <Link 
                                     key={item.name} 
                                     href={item.href}
-                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    onClick={() => closeAll()}
                                     className={`flex items-center gap-3 px-4 py-3 rounded-xl text-base font-medium transition-colors ${
                                         isActive 
                                             ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400" 
@@ -290,5 +271,6 @@ export function ClientProvider({
                 </motion.div>
             </main>
         </div>
+        </QueryClientProvider>
     );
 }

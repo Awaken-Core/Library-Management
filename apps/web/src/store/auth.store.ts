@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 interface User {
     id: string;
@@ -13,44 +14,31 @@ interface AuthState {
     isAuthenticated: boolean;
     login: (user: User, token: string) => void;
     logout: () => void;
-    hydrate: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    
-    login: (user, token) => {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('student_token', token);
-            localStorage.setItem('student_data', JSON.stringify(user));
-        }
-        set({ user, token, isAuthenticated: true });
-    },
-    
-    logout: () => {
-        if (typeof window !== 'undefined') {
-            localStorage.removeItem('student_token');
-            localStorage.removeItem('student_data');
-        }
-        set({ user: null, token: null, isAuthenticated: false });
-    },
-    
-    hydrate: () => {
-        if (typeof window !== 'undefined') {
-            const token = localStorage.getItem('student_token');
-            const userStr = localStorage.getItem('student_data');
+export const useAuthStore = create<AuthState>()(
+    persist(
+        (set) => ({
+            user: null,
+            token: null,
+            isAuthenticated: false,
             
-            if (token && userStr) {
-                try {
-                    const user = JSON.parse(userStr);
-                    set({ user, token, isAuthenticated: true });
-                } catch (e) {
-                    localStorage.removeItem('student_token');
-                    localStorage.removeItem('student_data');
-                }
-            }
+            login: (user, token) => {
+                set({ user, token, isAuthenticated: true });
+            },
+            
+            logout: () => {
+                set({ user: null, token: null, isAuthenticated: false });
+            },
+        }),
+        {
+            name: 'auth-storage', // name of the item in the storage (must be unique)
+            storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
+            partialize: (state) => ({ 
+                user: state.user, 
+                token: state.token,
+                isAuthenticated: state.isAuthenticated
+            }),
         }
-    },
-}));
+    )
+);

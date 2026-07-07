@@ -33,7 +33,7 @@ export default function AlertModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm transition-opacity">
-      <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-6 relative animate-in fade-in zoom-in-95 duration-150">
+      <div className="w-full max-w-sm bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg p-6 relative animate-in fade-in zoom-in-95 duration-150">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
@@ -63,3 +63,4 @@ export default function AlertModal({
     </div>
   );
 }
+

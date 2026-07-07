@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { 
     CircleDollarSign, 
     Loader2, 
@@ -14,7 +14,7 @@ import {
     TrendingUp,
     ShieldAlert
 } from "lucide-react";
-import { api } from "../../../lib/api";
+import { useAdminPenaltiesQuery, usePayPenaltyMutation } from "../../../hooks/queries/useAdminQueries";
 import AlertModal from "../components/AlertModal";
 
 interface BookDetail {
@@ -50,12 +50,13 @@ interface PenaltyRecord {
 }
 
 export default function PenaltiesPage() {
-    const [penalties, setPenalties] = useState<PenaltyRecord[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const { data: penaltiesResponse, isLoading: loading, error: queryError, refetch: refetchPenalties } = useAdminPenaltiesQuery();
+    const payPenaltyMutation = usePayPenaltyMutation();
+    const penalties = (penaltiesResponse?.data ?? []) as PenaltyRecord[];
+    const error = queryError ? "Failed to load penalty records" : "";
     const [filter, setFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
     const [searchQuery, setSearchQuery] = useState("");
-    const [submitting, setSubmitting] = useState(false);
+    const submitting = payPenaltyMutation.isPending;
 
     const [alertConfig, setAlertConfig] = useState<{
         isOpen: boolean;
@@ -73,39 +74,12 @@ export default function PenaltiesPage() {
         setAlertConfig({ isOpen: true, title, message, type });
     };
 
-    const fetchPenalties = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await api.get("/admin/penalties");
-            if (res.data.success) {
-                setPenalties(res.data.data || []);
-            } else {
-                setError(res.data.message || "Failed to load penalty records");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to load penalty records");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchPenalties();
-    }, [fetchPenalties]);
-
-    const handleMarkPaid = async (id: string, amount: string, studentName: string) => {
-        if (!confirm(`Confirm payment of ₹${amount} received from ${studentName}?`)) return;
-        setSubmitting(true);
-        try {
-            await api.patch(`/admin/penalties/${id}/pay`);
-            showAlert("Success", "Penalty marked as settled.", "success");
-            fetchPenalties();
-        } catch (err: any) {
-            showAlert("Error", err.response?.data?.message || "Failed to mark penalty as paid", "error");
-        } finally {
-            setSubmitting(false);
-        }
+    const handleMarkPaid = (id: string, amount: string, studentName: string) => {
+        if (!confirm(`Confirm payment of Rs. ${amount} received from ${studentName}?`)) return;
+        payPenaltyMutation.mutate(id, {
+            onSuccess: () => showAlert("Success", "Penalty marked as settled.", "success"),
+            onError: () => showAlert("Error", "Failed to mark penalty as paid", "error"),
+        });
     };
 
     // Calculate metrics
@@ -144,7 +118,7 @@ export default function PenaltiesPage() {
                         Penalty Fines
                     </h1>
                     <p className="text-zinc-500 dark:text-zinc-400 mt-1">
-                        Track, review, and settle late book return fines in Indian Rupees (₹).
+                        Track, review, and settle late book return fines in Indian Rupees (Rs. ).
                     </p>
                 </div>
                 
@@ -163,28 +137,28 @@ export default function PenaltiesPage() {
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-                    <div className="p-3.5 bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 rounded-2xl">
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="p-3.5 bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400 rounded-lg">
                         <ShieldAlert className="w-6 h-6" />
                     </div>
                     <div>
                         <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Unpaid Fine Sum</p>
-                        <p className="text-2xl font-black text-red-600 mt-1">₹{stats.unpaidAmount}</p>
+                        <p className="text-2xl font-black text-red-600 mt-1">Rs. {stats.unpaidAmount}</p>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-                    <div className="p-3.5 bg-green-50 text-green-600 dark:bg-green-950/20 dark:text-green-400 rounded-2xl">
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="p-3.5 bg-green-50 text-green-600 dark:bg-green-950/20 dark:text-green-400 rounded-lg">
                         <CheckCircle2 className="w-6 h-6" />
                     </div>
                     <div>
                         <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Settled Fine Sum</p>
-                        <p className="text-2xl font-black text-green-600 mt-1">₹{stats.paidAmount}</p>
+                        <p className="text-2xl font-black text-green-600 mt-1">Rs. {stats.paidAmount}</p>
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-                    <div className="p-3.5 bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 rounded-2xl">
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="p-3.5 bg-amber-50 text-amber-600 dark:bg-amber-950/20 dark:text-amber-400 rounded-lg">
                         <AlertCircle className="w-6 h-6" />
                     </div>
                     <div>
@@ -193,8 +167,8 @@ export default function PenaltiesPage() {
                     </div>
                 </div>
 
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
-                    <div className="p-3.5 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400 rounded-2xl">
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center gap-4">
+                    <div className="p-3.5 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400 rounded-lg">
                         <CircleDollarSign className="w-6 h-6" />
                     </div>
                     <div>
@@ -228,21 +202,21 @@ export default function PenaltiesPage() {
 
             {/* Content List */}
             {loading ? (
-                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
                     <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
                     <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-4">Loading penalty logs...</p>
                 </div>
             ) : error ? (
-                <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-3xl text-red-600 dark:text-red-400">
+                <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-lg text-red-600 dark:text-red-400">
                     <AlertCircle className="w-8 h-8 mx-auto mb-3" />
                     <h3 className="font-semibold text-lg">Error loading penalties</h3>
                     <p className="text-sm mt-1">{error}</p>
-                    <button onClick={fetchPenalties} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
+                    <button onClick={() => refetchPenalties()} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
                         Try Again
                     </button>
                 </div>
             ) : filteredPenalties.length === 0 ? (
-                <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden py-16 text-center">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden py-16 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4 text-zinc-400">
                         <CircleDollarSign className="w-8 h-8" />
                     </div>
@@ -252,7 +226,7 @@ export default function PenaltiesPage() {
                     </p>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -302,7 +276,7 @@ export default function PenaltiesPage() {
                                             {/* Amount & Status */}
                                             <td className="px-6 py-5">
                                                 <div className="flex flex-col gap-1 items-start">
-                                                    <span className="text-sm font-black text-zinc-900 dark:text-white">₹{p.amount}</span>
+                                                    <span className="text-sm font-black text-zinc-900 dark:text-white">Rs. {p.amount}</span>
                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${p.paid ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
                                                         {p.paid ? "Settled" : "Unpaid"}
                                                     </span>
@@ -343,3 +317,6 @@ export default function PenaltiesPage() {
         </div>
     );
 }
+
+
+

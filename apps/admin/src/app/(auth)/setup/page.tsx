@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSetupCheck } from "../../../hooks/useSetupCheck";
 import { useAuthStore } from "../../../store/auth.store";
-import { api } from "../../../lib/api";
+import { useSetupAdminMutation } from "../../../hooks/queries/useAuthQueries";
 import { motion } from "framer-motion";
 import { Library, Mail, Lock, User, Phone, ArrowRight, Loader2, KeyRound } from "lucide-react";
 
@@ -21,7 +21,8 @@ export default function SetupPage() {
         confirmPassword: "",
     });
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
+    const setupMutation = useSetupAdminMutation();
+    const loading = setupMutation.isPending;
 
     if (isLoading) {
         return (
@@ -49,22 +50,18 @@ export default function SetupPage() {
             return;
         }
 
-        try {
-            setLoading(true);
-            const res = await api.post("/auth/setup", {
-                name: formData.name,
-                email: formData.email,
-                phoneNo: formData.phoneNo,
-                password: formData.password,
-            });
-
-            login(res.data.admin, res.data.token);
-            router.push("/");
-        } catch (err: any) {
-            setError(err.response?.data?.message || "Failed to create admin account");
-        } finally {
-            setLoading(false);
-        }
+        setupMutation.mutate({
+            name: formData.name,
+            email: formData.email,
+            phoneNo: formData.phoneNo,
+            password: formData.password,
+        }, {
+            onSuccess: (res) => {
+                if (res.admin) login(res.admin, res.token);
+                router.push("/");
+            },
+            onError: () => setError("Failed to create admin account"),
+        });
     };
 
     return (
@@ -199,3 +196,4 @@ export default function SetupPage() {
         </div>
     );
 }
+

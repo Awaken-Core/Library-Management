@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { 
     BookOpen, 
@@ -22,7 +22,7 @@ import {
     X
 } from "lucide-react";
 import Link from "next/link";
-import { api } from "../../../../lib/api";
+import { useAddBookCopiesMutation, useAdminBookQuery, useDeleteBookMutation, useUpdateBookMutation, useUpdateCopyStatusMutation } from "../../../../hooks/queries/useAdminQueries";
 import AlertModal from "../../components/AlertModal";
 
 interface BookCopy {
@@ -49,9 +49,13 @@ interface BookDetails {
 export default function BookDetailsPage() {
     const { id } = useParams();
     const router = useRouter();
-
-    const [book, setBook] = useState<BookDetails | null>(null);
-    const [loading, setLoading] = useState(true);
+    const bookId = Array.isArray(id) ? id[0] : id;
+    const { data: bookResponse, isLoading: loading, error: queryError } = useAdminBookQuery(bookId);
+    const updateBookMutation = useUpdateBookMutation();
+    const deleteBookMutation = useDeleteBookMutation();
+    const addCopiesMutation = useAddBookCopiesMutation();
+    const updateCopyStatusMutation = useUpdateCopyStatusMutation(bookId);
+    const book = (bookResponse?.data ?? null) as BookDetails | null;
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
 
@@ -70,7 +74,7 @@ export default function BookDetailsPage() {
 
     // Add copies state
     const [newBarcodes, setNewBarcodes] = useState("");
-    const [actionLoading, setActionLoading] = useState(false);
+    const actionLoading = updateBookMutation.isPending || deleteBookMutation.isPending || addCopiesMutation.isPending || updateCopyStatusMutation.isPending;
 
     const [alertConfig, setAlertConfig] = useState<{
         isOpen: boolean;
@@ -94,39 +98,23 @@ export default function BookDetailsPage() {
         setAlertConfig({ isOpen: true, title, message, type, onCloseCallback });
     };
 
-    const fetchBookDetails = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await api.get(`/admin/books/${id}`);
-            if (res.data.success) {
-                const data = res.data.data;
-                setBook(data);
-                setEditFormData({
-                    title: data.title || "",
-                    author: data.author || "",
-                    isbn: data.isbn || "",
-                    publisher: data.publisher || "",
-                    edition: data.edition || "",
-                    language: data.language || "",
-                    publishedAt: data.publishedAt ? data.publishedAt.split("T")[0] : "",
-                    description: data.description || ""
-                });
-            } else {
-                setError(res.data.message || "Failed to load book details");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to load book details");
-        } finally {
-            setLoading(false);
-        }
-    }, [id]);
+    useEffect(() => {
+        if (!book) return;
+        setEditFormData({
+            title: book.title || "",
+            author: book.author || "",
+            isbn: book.isbn || "",
+            publisher: book.publisher || "",
+            edition: book.edition || "",
+            language: book.language || "",
+            publishedAt: book.publishedAt ? book.publishedAt.split("T")[0] : "",
+            description: book.description || ""
+        });
+    }, [book]);
 
     useEffect(() => {
-        if (id) {
-            fetchBookDetails();
-        }
-    }, [id, fetchBookDetails]);
+        if (queryError) setError("Failed to load book details");
+    }, [queryError]);
 
     const handleEditToggle = () => {
         setIsEditing(!isEditing);
@@ -138,48 +126,36 @@ export default function BookDetailsPage() {
         setEditFormData({ ...editFormData, [e.target.name]: e.target.value });
     };
 
-    const handleUpdateBook = async (e: React.FormEvent) => {
+    const handleUpdateBook = (e: React.FormEvent) => {
         e.preventDefault();
-        setActionLoading(true);
+        if (!bookId) return;
         setError("");
         setSuccessMessage("");
-        try {
-            const payload = {
-                ...editFormData,
-                publishedAt: new Date(editFormData.publishedAt).toISOString()
-            };
-            const res = await api.put(`/admin/books/${id}`, payload);
-            if (res.data.success) {
+        const payload = {
+            ...editFormData,
+            publishedAt: new Date(editFormData.publishedAt).toISOString()
+        };
+        updateBookMutation.mutate({ id: bookId, payload }, {
+            onSuccess: () => {
                 setSuccessMessage("Book details updated successfully!");
                 setIsEditing(false);
-                fetchBookDetails();
-            } else {
-                setError(res.data.message || "Failed to update book");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to update book");
-        } finally {
-            setActionLoading(false);
-        }
+            },
+            onError: () => setError("Failed to update book"),
+        });
     };
 
-    const handleDeleteBook = async () => {
+    const handleDeleteBook = () => {
+        if (!bookId) return;
         if (!confirm("Are you sure you want to delete this book entirely from the catalog? This will delete all copies and history.")) return;
-        setActionLoading(true);
-        try {
-            await api.delete(`/admin/books/${id}`);
-            showAlert("Success", "Book deleted successfully.", "success", () => {
-                router.push("/inventory");
-            });
-        } catch (err: any) {
-            showAlert("Error", err.response?.data?.message || "Failed to delete book", "error");
-        } finally {
-            setActionLoading(false);
-        }
+        deleteBookMutation.mutate(bookId, {
+            onSuccess: () => showAlert("Success", "Book deleted successfully.", "success", () => router.push("/inventory")),
+            onError: () => showAlert("Error", "Failed to delete book", "error"),
+        });
     };
 
-    const handleAddCopies = async (e: React.FormEvent) => {
+    const handleAddCopies = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!bookId) return;
         setError("");
         setSuccessMessage("");
 
@@ -193,41 +169,22 @@ export default function BookDetailsPage() {
             return;
         }
 
-        setActionLoading(true);
-        try {
-            const res = await api.post(`/admin/books/${id}/copies`, {
-                barcodes: barcodesArray
-            });
-            if (res.data.success) {
-                setSuccessMessage(res.data.message || "Copies added successfully!");
+        addCopiesMutation.mutate({ id: bookId, barcodes: barcodesArray }, {
+            onSuccess: (res) => {
+                setSuccessMessage(res.message || "Copies added successfully!");
                 setNewBarcodes("");
-                fetchBookDetails();
-            } else {
-                setError(res.data.message || "Failed to add copies");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to add copies");
-        } finally {
-            setActionLoading(false);
-        }
+            },
+            onError: () => setError("Failed to add copies"),
+        });
     };
 
-    const handleCopyStatusChange = async (copyId: string, newStatus: string) => {
+    const handleCopyStatusChange = (copyId: string, newStatus: string) => {
         setError("");
         setSuccessMessage("");
-        try {
-            const res = await api.patch(`/admin/books/copies/${copyId}/status`, {
-                status: newStatus
-            });
-            if (res.data.success) {
-                setSuccessMessage("Copy status updated successfully!");
-                fetchBookDetails();
-            } else {
-                setError(res.data.message || "Failed to update copy status");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to update copy status");
-        }
+        updateCopyStatusMutation.mutate({ copyId, status: newStatus }, {
+            onSuccess: () => setSuccessMessage("Copy status updated successfully!"),
+            onError: () => setError("Failed to update copy status"),
+        });
     };
 
     const formatDate = (dateStr: string | null) => {
@@ -265,7 +222,7 @@ export default function BookDetailsPage() {
 
     if (error && !book) {
         return (
-            <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-3xl text-red-600 dark:text-red-400 max-w-2xl mx-auto mt-12">
+            <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-lg text-red-600 dark:text-red-400 max-w-2xl mx-auto mt-12">
                 <AlertCircle className="w-8 h-8 mx-auto mb-3" />
                 <h3 className="font-semibold text-lg">Failed to load book</h3>
                 <p className="text-sm mt-1">{error}</p>
@@ -278,7 +235,7 @@ export default function BookDetailsPage() {
 
     if (!book) {
         return (
-            <div className="p-8 text-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl max-w-2xl mx-auto mt-12">
+            <div className="p-8 text-center bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg max-w-2xl mx-auto mt-12">
                 <AlertCircle className="w-8 h-8 mx-auto mb-3 text-zinc-400" />
                 <h3 className="font-semibold text-lg text-zinc-900 dark:text-white">Book not found</h3>
                 <Link href="/inventory" className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 text-sm font-medium rounded-xl hover:opacity-90 transition-opacity shadow-md">
@@ -315,13 +272,13 @@ export default function BookDetailsPage() {
 
             {/* Notification messages */}
             {successMessage && (
-                <div className="p-4 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/20 rounded-2xl flex items-start gap-3">
+                <div className="p-4 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/20 rounded-lg flex items-start gap-3">
                     <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <p className="text-sm font-medium">{successMessage}</p>
                 </div>
             )}
             {error && (
-                <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-2xl flex items-start gap-3">
+                <div className="p-4 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-lg flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <p className="text-sm font-medium">{error}</p>
                 </div>
@@ -331,7 +288,7 @@ export default function BookDetailsPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left 2 Columns: Book Metadata / Edit Form */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm relative overflow-hidden">
+                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[80px] rounded-full -mr-32 -mt-32 pointer-events-none"></div>
 
                         {isEditing ? (
@@ -469,7 +426,7 @@ export default function BookDetailsPage() {
                     </div>
 
                     {/* PHYSICAL COPIES LIST */}
-                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
+                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
                         <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-4">
                             <div>
                                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Physical Book Copies</h3>
@@ -481,7 +438,7 @@ export default function BookDetailsPage() {
                         </div>
 
                         {book.bookCopies?.length === 0 ? (
-                            <div className="text-center py-10 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                            <div className="text-center py-10 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800">
                                 <Barcode className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
                                 <h4 className="font-semibold text-sm text-zinc-900 dark:text-white">No Physical Copies</h4>
                                 <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs mx-auto mt-1">
@@ -537,7 +494,7 @@ export default function BookDetailsPage() {
 
                 {/* Right 1 Column: Add Copies Panel */}
                 <div className="space-y-6">
-                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm relative overflow-hidden">
+                    <div className="bg-white dark:bg-zinc-900 p-8 rounded-lg border border-zinc-200 dark:border-zinc-800 shadow-sm relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 blur-[80px] rounded-full -mr-32 -mt-32 pointer-events-none"></div>
 
                         <div className="flex items-center gap-2.5 pb-4 border-b border-zinc-100 dark:border-zinc-800 mb-6 relative z-10">
@@ -556,7 +513,7 @@ export default function BookDetailsPage() {
                                     onChange={(e) => setNewBarcodes(e.target.value)}
                                     placeholder="Enter copy barcodes (one barcode per line or separated by commas)"
                                     rows={8}
-                                    className="w-full p-3.5 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500 text-sm placeholder:text-zinc-400 font-mono resize-none"
+                                    className="w-full p-3.5 border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500 text-sm placeholder:text-zinc-400 font-mono resize-none"
                                 />
                             </div>
 
@@ -570,7 +527,7 @@ export default function BookDetailsPage() {
                             <button
                                 type="submit"
                                 disabled={actionLoading || !newBarcodes.trim()}
-                                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-sm"
                             >
                                 {actionLoading ? (
                                     <><Loader2 className="w-4 h-4 animate-spin" /> Adding...</>
@@ -580,6 +537,7 @@ export default function BookDetailsPage() {
                             </button>
                         </form>
                     </div>
+                </div>
             </div>
             <AlertModal
                 isOpen={alertConfig.isOpen}
@@ -594,3 +552,6 @@ export default function BookDetailsPage() {
         </div>
     );
 }
+
+
+

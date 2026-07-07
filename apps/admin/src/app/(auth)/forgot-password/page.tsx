@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "../../../lib/api";
+import { useResetPasswordMutation, useVerifyForgotPasswordMutation } from "../../../hooks/queries/useAuthQueries";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Library, Mail, Lock, Phone, ArrowRight, Loader2, KeyRound, CheckCircle2, AlertTriangle } from "lucide-react";
@@ -23,26 +23,23 @@ export default function ForgotPasswordPage() {
 
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
-    const [loading, setLoading] = useState(false);
+    const verifyMutation = useVerifyForgotPasswordMutation();
+    const resetMutation = useResetPasswordMutation();
+    const loading = verifyMutation.isPending || resetMutation.isPending;
 
     const handleVerify = async (e: React.FormEvent) => {
         e.preventDefault();
         setError("");
         setSuccess("");
 
-        try {
-            setLoading(true);
-            const res = await api.post("/auth/forgot-password", { email, phoneNo });
-            setStep(2);
-            setSuccess(`Identity verified. Temporary reset token: ${res.data.resetToken}`);
-            if (res.data.resetToken) {
-                setResetToken(res.data.resetToken);
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Verification failed");
-        } finally {
-            setLoading(false);
-        }
+        verifyMutation.mutate({ email, phoneNo }, {
+            onSuccess: (res) => {
+                setStep(2);
+                setSuccess(`Identity verified. Temporary reset token: ${res.resetToken}`);
+                if (res.resetToken) setResetToken(res.resetToken);
+            },
+            onError: () => setError("Verification failed"),
+        });
     };
 
     const handleReset = async (e: React.FormEvent) => {
@@ -55,18 +52,13 @@ export default function ForgotPasswordPage() {
             return;
         }
 
-        try {
-            setLoading(true);
-            await api.post("/auth/reset-password", { resetToken, newPassword });
-            setSuccess("Password reset successfully. Redirecting to login...");
-            setTimeout(() => {
-                router.push("/login");
-            }, 2000);
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to reset password");
-        } finally {
-            setLoading(false);
-        }
+        resetMutation.mutate({ resetToken, newPassword }, {
+            onSuccess: () => {
+                setSuccess("Password reset successfully. Redirecting to login...");
+                setTimeout(() => router.push("/login"), 2000);
+            },
+            onError: () => setError("Failed to reset password"),
+        });
     };
 
     return (
@@ -269,3 +261,4 @@ export default function ForgotPasswordPage() {
         </div>
     );
 }
+

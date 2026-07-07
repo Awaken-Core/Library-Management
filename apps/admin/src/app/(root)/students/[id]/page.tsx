@@ -1,61 +1,18 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React from "react";
 import { useParams, useRouter } from 'next/navigation';
-import { api } from "../../../../lib/api";
+import { useAdminUserQuery } from "../../../../hooks/queries/useAdminQueries";
 import { UserCircle, Mail, Phone, Calendar, ArrowLeft, BookOpen, AlertTriangle, CheckCircle2, IndianRupee } from "lucide-react";
 import Link from 'next/link';
-
-type UserDetails = {
-    id: string;
-    name: string;
-    email: string;
-    phoneNo: string;
-    role: string;
-    isBanned: boolean;
-    createdAt: string;
-    borrowsUser: Array<{
-        id: string;
-        status: string;
-        borrowDate: string;
-        returnDate: string | null;
-        returnedOn: string | null;
-        borrowBooks: Array<{
-            book: {
-                barcode: string;
-                book: { title: string; author: string; };
-            }
-        }>;
-    }>;
-    penalties: Array<{
-        id: string;
-        amount: string;
-        reason: string;
-        createdAt: string;
-    }>;
-};
 
 export default function StudentDetailsPage() {
     const { id } = useParams();
     const router = useRouter();
-    const [student, setStudent] = useState<UserDetails | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        const fetchDetails = async () => {
-            try {
-                setLoading(true);
-                const res = await api.get(`/admin/users/${id}`);
-                setStudent(res.data.data);
-            } catch (err: any) {
-                setError(err.response?.data?.message || "Failed to load student details");
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchDetails();
-    }, [id]);
+    const studentId = Array.isArray(id) ? id[0] : id;
+    const { data: studentResponse, isLoading: loading, error: queryError } = useAdminUserQuery(studentId);
+    const student = studentResponse?.data ?? null;
+    const error = queryError ? "Failed to load student details" : "";
 
     if (loading) {
         return (
@@ -71,7 +28,7 @@ export default function StudentDetailsPage() {
                 <button onClick={() => router.back()} className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition-colors">
                     <ArrowLeft className="w-4 h-4" /> Back to Students
                 </button>
-                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 p-6 rounded-2xl flex items-center gap-3">
+                <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400 p-6 rounded-lg flex items-center gap-3">
                     <AlertTriangle className="w-6 h-6" />
                     <div>
                         <h3 className="font-semibold text-lg">Error loading details</h3>
@@ -97,8 +54,8 @@ export default function StudentDetailsPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Profile Card */}
-                <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-                    <div className="h-32 bg-gradient-to-r from-primary to-blue-600"></div>
+                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                    <div className="h-32 bg-zinc-100 dark:bg-zinc-800"></div>
                     <div className="px-8 pb-8 relative">
                         <div className="w-24 h-24 bg-white dark:bg-zinc-800 rounded-full border-4 border-white dark:border-zinc-900 absolute -top-12 flex items-center justify-center text-3xl font-bold text-primary shadow-md">
                             {student.name.charAt(0).toUpperCase()}
@@ -145,32 +102,32 @@ export default function StudentDetailsPage() {
                 <div className="lg:col-span-2 space-y-8">
                     {/* Stats */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800">
-                            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center mb-4">
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+                            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg flex items-center justify-center mb-4">
                                 <BookOpen className="w-6 h-6" />
                             </div>
                             <p className="text-sm font-medium text-zinc-500 mb-1">Total Borrowed</p>
                             <p className="text-3xl font-bold text-zinc-900 dark:text-white">{totalBorrowed}</p>
                         </div>
-                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800">
-                            <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mb-4">
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+                            <div className="w-12 h-12 bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-lg flex items-center justify-center mb-4">
                                 <BookOpen className="w-6 h-6" />
                             </div>
                             <p className="text-sm font-medium text-zinc-500 mb-1">Currently Borrowing</p>
                             <p className="text-3xl font-bold text-zinc-900 dark:text-white">{currentlyBorrowed}</p>
                         </div>
-                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800">
-                            <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mb-4">
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800">
+                            <div className="w-12 h-12 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg flex items-center justify-center mb-4">
                                 <IndianRupee className="w-6 h-6" />
                             </div>
                             <p className="text-sm font-medium text-zinc-500 mb-1">Pending Fines</p>
-                            <p className="text-3xl font-bold text-zinc-900 dark:text-white">₹{pendingFines.toFixed(2)}</p>
+                            <p className="text-3xl font-bold text-zinc-900 dark:text-white">Rs. {pendingFines.toFixed(2)}</p>
                         </div>
                     </div>
 
                     {/* Pending Fines Details */}
                     {student.penalties.length > 0 && (
-                        <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                             <div className="p-6 border-b border-zinc-200 dark:border-zinc-800">
                                 <h3 className="text-lg font-bold text-zinc-900 dark:text-white flex items-center gap-2">
                                     <AlertTriangle className="w-5 h-5 text-red-500" /> Pending Penalties
@@ -184,7 +141,7 @@ export default function StudentDetailsPage() {
                                             <p className="text-xs text-zinc-500 mt-1">Issued on {new Date(penalty.createdAt).toLocaleDateString()}</p>
                                         </div>
                                         <div className="font-bold text-red-600 dark:text-red-400">
-                                            ₹{parseFloat(penalty.amount).toFixed(2)}
+                                            Rs. {parseFloat(penalty.amount).toFixed(2)}
                                         </div>
                                     </div>
                                 ))}
@@ -193,7 +150,7 @@ export default function StudentDetailsPage() {
                     )}
 
                     {/* Borrow History */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                         <div className="p-6 border-b border-zinc-200 dark:border-zinc-800 flex justify-between items-center">
                             <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Borrow History</h3>
                         </div>
@@ -259,3 +216,6 @@ export default function StudentDetailsPage() {
         </div>
     );
 }
+
+
+

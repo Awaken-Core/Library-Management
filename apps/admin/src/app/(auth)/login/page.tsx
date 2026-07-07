@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSetupCheck } from "../../../hooks/useSetupCheck";
 import { useAuthStore } from "../../../store/auth.store";
-import { api } from "../../../lib/api";
+import { useLoginAdminMutation } from "../../../hooks/queries/useAuthQueries";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Library, Mail, Lock, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
@@ -17,7 +17,8 @@ export default function LoginPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
+    const loginMutation = useLoginAdminMutation();
+    const loading = loginMutation.isPending;
 
     if (isLoading) {
         return (
@@ -36,21 +37,17 @@ export default function LoginPage() {
         e.preventDefault();
         setError("");
 
-        try {
-            setLoading(true);
-            const res = await api.post("/auth/login", { email, password });
-            
-            if (res.data.user.role !== "ADMIN") {
-                throw new Error("Unauthorized access. Admin privileges required.");
-            }
-            
-            login(res.data.user, res.data.token);
-            router.push("/");
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Login failed");
-        } finally {
-            setLoading(false);
-        }
+        loginMutation.mutate({ email, password }, {
+            onSuccess: (res) => {
+                if (res.user?.role !== "ADMIN") {
+                    setError("Unauthorized access. Admin privileges required.");
+                    return;
+                }
+                login(res.user, res.token);
+                router.push("/");
+            },
+            onError: () => setError("Login failed"),
+        });
     };
 
     return (
@@ -179,3 +176,4 @@ export default function LoginPage() {
         </div>
     );
 }
+

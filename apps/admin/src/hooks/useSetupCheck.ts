@@ -1,31 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '../lib/api';
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSetupStatusQuery } from "./queries/useAuthQueries";
 
 export const useSetupCheck = () => {
-    const [isLoading, setIsLoading] = useState(true);
-    const [adminExists, setAdminExists] = useState<boolean | null>(null);
     const router = useRouter();
+    const { data, isLoading, error } = useSetupStatusQuery();
+    const adminExists = data?.adminExists ?? null;
 
     useEffect(() => {
-        const checkSetup = async () => {
-            try {
-                const response = await api.get('/auth/setup-status');
-                const exists = response.data.adminExists;
-                setAdminExists(exists);
-                
-                if (!exists) {
-                    router.push('/setup');
-                }
-            } catch (error) {
-                console.error("Failed to check setup status", error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
+        if (!isLoading && adminExists === false) {
+            router.push("/setup");
+        }
+    }, [adminExists, isLoading, router]);
 
-        checkSetup();
-    }, [router]);
+    if (error) {
+        console.error("Failed to check setup status", error);
+    }
 
     return { isLoading, adminExists };
 };

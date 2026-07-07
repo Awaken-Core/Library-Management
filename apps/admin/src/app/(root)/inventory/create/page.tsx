@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "../../../../lib/api";
+import { useCreateBookMutation } from "../../../../hooks/queries/useAdminQueries";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { BookOpen, Book, User, Info, CheckCircle2, AlertTriangle, Loader2, Calendar, FileText, Globe, Bookmark } from "lucide-react";
@@ -20,7 +20,8 @@ export default function CreateBookPage() {
         publishedAt: "",
     });
     const [status, setStatus] = useState<{ type: "success" | "error" | null, message: string }>({ type: null, message: "" });
-    const [loading, setLoading] = useState(false);
+    const createBookMutation = useCreateBookMutation();
+    const loading = createBookMutation.isPending;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -30,25 +31,17 @@ export default function CreateBookPage() {
         e.preventDefault();
         setStatus({ type: null, message: "" });
 
-        try {
-            setLoading(true);
-            // publishedAt needs to be sent as Date string
-            const payload = { ...formData, publishedAt: new Date(formData.publishedAt).toISOString() };
-            const res = await api.post("/admin/books", payload);
-            const bookId = res.data.data.id;
-            setStatus({ type: "success", message: "Book added to inventory successfully. Redirecting to copies management..." });
-            
-            setTimeout(() => {
-                router.push(`/inventory/${bookId}`);
-            }, 1000);
-        } catch (err: any) {
-            setStatus({ 
-                type: "error", 
-                message: err.response?.data?.message || "Failed to add book" 
-            });
-        } finally {
-            setLoading(false);
-        }
+        const payload = { ...formData, publishedAt: new Date(formData.publishedAt).toISOString() };
+        createBookMutation.mutate(payload, {
+            onSuccess: (res) => {
+                const bookId = res.data.id;
+                setStatus({ type: "success", message: "Book added to inventory successfully. Redirecting to copies management..." });
+                setTimeout(() => router.push(`/inventory/${bookId}`), 1000);
+            },
+            onError: () => {
+                setStatus({ type: "error", message: "Failed to add book" });
+            },
+        });
     };
 
     return (
@@ -72,7 +65,7 @@ export default function CreateBookPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 }}
-                className="bg-white dark:bg-zinc-900 p-8 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 relative overflow-hidden"
+                className="bg-white dark:bg-zinc-900 p-8 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 relative overflow-hidden"
             >
                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 blur-[80px] rounded-full -mr-32 -mt-32 pointer-events-none"></div>
 
@@ -80,7 +73,7 @@ export default function CreateBookPage() {
                     <motion.div 
                         initial={{ opacity: 0, height: 0, marginBottom: 0 }}
                         animate={{ opacity: 1, height: "auto", marginBottom: 24 }}
-                        className="p-4 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/20 rounded-2xl flex items-start gap-3"
+                        className="p-4 bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-500/20 rounded-lg flex items-start gap-3"
                     >
                         <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
                         <div>
@@ -93,7 +86,7 @@ export default function CreateBookPage() {
                     <motion.div 
                         initial={{ opacity: 0, height: 0, marginBottom: 0 }}
                         animate={{ opacity: 1, height: "auto", marginBottom: 24 }}
-                        className="p-4 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-2xl flex items-start gap-3"
+                        className="p-4 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-lg flex items-start gap-3"
                     >
                         <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                         <div>
@@ -103,7 +96,7 @@ export default function CreateBookPage() {
                     </motion.div>
                 )}
 
-                <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 rounded-2xl text-sm flex items-start gap-3 relative z-10">
+                <div className="mb-8 p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 rounded-lg text-sm flex items-start gap-3 relative z-10">
                     <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
                     <p>
                         <strong>Note:</strong> After adding a book to the catalog, you will need to add specific physical copies (barcodes) to it from the inventory page before users can borrow it.
@@ -243,3 +236,5 @@ export default function CreateBookPage() {
         </div>
     );
 }
+
+

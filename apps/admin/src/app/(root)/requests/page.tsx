@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { 
     Clock, 
     CheckCircle2, 
@@ -16,7 +16,7 @@ import {
     BookMarked,
     CalendarClock
 } from "lucide-react";
-import { api } from "../../../lib/api";
+import { useAdminBorrowsQuery, useApproveBorrowMutation, useRejectBorrowMutation, useReturnBorrowMutation } from "../../../hooks/queries/useAdminQueries";
 import AlertModal from "../components/AlertModal";
 
 interface BookDetail {
@@ -64,9 +64,12 @@ interface BorrowRecord {
 }
 
 export default function RequestsPage() {
-    const [borrows, setBorrows] = useState<BorrowRecord[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+    const { data: borrowsResponse, isLoading: loading, error: queryError, refetch: refetchBorrows } = useAdminBorrowsQuery();
+    const approveBorrowMutation = useApproveBorrowMutation();
+    const rejectBorrowMutation = useRejectBorrowMutation();
+    const returnBorrowMutation = useReturnBorrowMutation();
+    const borrows = (borrowsResponse?.data ?? []) as BorrowRecord[];
+    const error = queryError ? "Failed to load requests" : "";
     const [filter, setFilter] = useState<"ALL" | "PENDING" | "APPROVED" | "REJECTED" | "RETURNED">("ALL");
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -74,7 +77,7 @@ export default function RequestsPage() {
     const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
     const [selectedBorrowId, setSelectedBorrowId] = useState<string | null>(null);
     const [dueDate, setDueDate] = useState("");
-    const [submitting, setSubmitting] = useState(false);
+    const submitting = approveBorrowMutation.isPending || rejectBorrowMutation.isPending || returnBorrowMutation.isPending;
 
     const [alertConfig, setAlertConfig] = useState<{
         isOpen: boolean;
@@ -91,28 +94,6 @@ export default function RequestsPage() {
     const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
         setAlertConfig({ isOpen: true, title, message, type });
     };
-
-    const fetchBorrows = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            // Get all borrows, we filter client-side for reliable stat counters and smoother filtering
-            const res = await api.get("/admin/borrows");
-            if (res.data.success) {
-                setBorrows(res.data.data || []);
-            } else {
-                setError(res.data.message || "Failed to load requests");
-            }
-        } catch (err: any) {
-            setError(err.response?.data?.message || err.message || "Failed to load requests");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchBorrows();
-    }, [fetchBorrows]);
 
     // Calculate stats
     const stats = {
@@ -134,32 +115,20 @@ export default function RequestsPage() {
         return matchesStatus && matchesSearch;
     });
 
-    const handleReject = async (id: string) => {
+    const handleReject = (id: string) => {
         if (!confirm("Are you sure you want to REJECT this borrow request?")) return;
-        setSubmitting(true);
-        try {
-            await api.patch(`/admin/borrows/${id}/reject`);
-            showAlert("Success", "Borrow request rejected.", "success");
-            fetchBorrows();
-        } catch (err: any) {
-            showAlert("Error", err.response?.data?.message || "Failed to reject request", "error");
-        } finally {
-            setSubmitting(false);
-        }
+        rejectBorrowMutation.mutate(id, {
+            onSuccess: () => showAlert("Success", "Borrow request rejected.", "success"),
+            onError: () => showAlert("Error", "Failed to reject request", "error"),
+        });
     };
 
-    const handleReturn = async (id: string) => {
+    const handleReturn = (id: string) => {
         if (!confirm("Confirm that all books in this request have been returned?")) return;
-        setSubmitting(true);
-        try {
-            const res = await api.post(`/admin/borrows/${id}/return`);
-            showAlert("Success", res.data.message || "Books marked as returned.", "success");
-            fetchBorrows();
-        } catch (err: any) {
-            showAlert("Error", err.response?.data?.message || "Failed to process return", "error");
-        } finally {
-            setSubmitting(false);
-        }
+        returnBorrowMutation.mutate(id, {
+            onSuccess: (res) => showAlert("Success", res.message || "Books marked as returned.", "success"),
+            onError: () => showAlert("Error", "Failed to process return", "error"),
+        });
     };
 
     const openApproveModal = (id: string) => {
@@ -171,22 +140,19 @@ export default function RequestsPage() {
         setIsApproveModalOpen(true);
     };
 
-    const handleApprove = async () => {
+    const handleApprove = () => {
         if (!selectedBorrowId || !dueDate) return;
-        setSubmitting(true);
-        try {
-            await api.patch(`/admin/borrows/${selectedBorrowId}/approve`, {
-                returnDate: new Date(dueDate).toISOString()
-            });
-            setIsApproveModalOpen(false);
-            setSelectedBorrowId(null);
-            showAlert("Success", "Borrow request approved!", "success");
-            fetchBorrows();
-        } catch (err: any) {
-            showAlert("Error", err.response?.data?.message || "Failed to approve request", "error");
-        } finally {
-            setSubmitting(false);
-        }
+        approveBorrowMutation.mutate({
+            id: selectedBorrowId,
+            returnDate: new Date(dueDate).toISOString(),
+        }, {
+            onSuccess: () => {
+                setIsApproveModalOpen(false);
+                setSelectedBorrowId(null);
+                showAlert("Success", "Borrow request approved!", "success");
+            },
+            onError: () => showAlert("Error", "Failed to approve request", "error"),
+        });
     };
 
     const formatDate = (dateStr: string | null) => {
@@ -251,7 +217,7 @@ export default function RequestsPage() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <button 
                     onClick={() => setFilter("ALL")}
-                    className={`p-5 rounded-2xl border text-left transition-all ${filter === "ALL" ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-md" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                    className={`p-5 rounded-lg border text-left transition-all ${filter === "ALL" ? "bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-md" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 >
                     <p className={`text-xs font-semibold ${filter === "ALL" ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-500"}`}>Total Requests</p>
                     <p className="text-2xl font-bold mt-1">{stats.total}</p>
@@ -259,7 +225,7 @@ export default function RequestsPage() {
 
                 <button 
                     onClick={() => setFilter("PENDING")}
-                    className={`p-5 rounded-2xl border text-left transition-all ${filter === "PENDING" ? "bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                    className={`p-5 rounded-lg border text-left transition-all ${filter === "PENDING" ? "bg-amber-500 text-white border-amber-500 shadow-sm" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 >
                     <p className={`text-xs font-semibold ${filter === "PENDING" ? "text-amber-100" : "text-zinc-500"}`}>Pending Approval</p>
                     <p className="text-2xl font-bold mt-1">{stats.pending}</p>
@@ -267,7 +233,7 @@ export default function RequestsPage() {
 
                 <button 
                     onClick={() => setFilter("APPROVED")}
-                    className={`p-5 rounded-2xl border text-left transition-all ${filter === "APPROVED" ? "bg-green-600 text-white border-green-600 shadow-md shadow-green-600/20" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                    className={`p-5 rounded-lg border text-left transition-all ${filter === "APPROVED" ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 >
                     <p className={`text-xs font-semibold ${filter === "APPROVED" ? "text-green-100" : "text-zinc-500"}`}>Active Borrows</p>
                     <p className="text-2xl font-bold mt-1">{stats.approved}</p>
@@ -275,7 +241,7 @@ export default function RequestsPage() {
 
                 <button 
                     onClick={() => setFilter("RETURNED")}
-                    className={`p-5 rounded-2xl border text-left transition-all ${filter === "RETURNED" ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                    className={`p-5 rounded-lg border text-left transition-all ${filter === "RETURNED" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 >
                     <p className={`text-xs font-semibold ${filter === "RETURNED" ? "text-blue-100" : "text-zinc-500"}`}>Returned</p>
                     <p className="text-2xl font-bold mt-1">{stats.returned}</p>
@@ -283,7 +249,7 @@ export default function RequestsPage() {
 
                 <button 
                     onClick={() => setFilter("REJECTED")}
-                    className={`p-5 rounded-2xl border text-left transition-all ${filter === "REJECTED" ? "bg-red-600 text-white border-red-600 shadow-md shadow-red-600/20" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                    className={`p-5 rounded-lg border text-left transition-all ${filter === "REJECTED" ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 >
                     <p className={`text-xs font-semibold ${filter === "REJECTED" ? "text-red-100" : "text-zinc-500"}`}>Rejected</p>
                     <p className="text-2xl font-bold mt-1">{stats.rejected}</p>
@@ -292,21 +258,21 @@ export default function RequestsPage() {
 
             {/* Content List */}
             {loading ? (
-                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-zinc-900 rounded-3xl border border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800">
                     <Loader2 className="w-10 h-10 text-blue-600 dark:text-blue-500 animate-spin" />
                     <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-4">Loading borrow requests...</p>
                 </div>
             ) : error ? (
-                <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-3xl text-red-600 dark:text-red-400">
+                <div className="p-8 text-center bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-lg text-red-600 dark:text-red-400">
                     <AlertCircle className="w-8 h-8 mx-auto mb-3" />
                     <h3 className="font-semibold text-lg">Error loading requests</h3>
                     <p className="text-sm mt-1">{error}</p>
-                    <button onClick={fetchBorrows} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
+                    <button onClick={() => refetchBorrows()} className="mt-4 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700 transition-colors">
                         Try Again
                     </button>
                 </div>
             ) : filteredBorrows.length === 0 ? (
-                <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden py-16 text-center">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden py-16 text-center">
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4 text-zinc-400">
                         <BookMarked className="w-8 h-8" />
                     </div>
@@ -316,7 +282,7 @@ export default function RequestsPage() {
                     </p>
                 </div>
             ) : (
-                <div className="bg-white dark:bg-zinc-900 rounded-3xl shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -458,7 +424,7 @@ export default function RequestsPage() {
             {/* Approval Modal */}
             {isApproveModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/60 backdrop-blur-sm transition-opacity">
-                    <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl shadow-2xl p-6 relative">
+                    <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg p-6 relative">
                         <button 
                             onClick={() => setIsApproveModalOpen(false)}
                             className="absolute right-4 top-4 p-1 rounded-full text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
@@ -497,7 +463,7 @@ export default function RequestsPage() {
                                 <button
                                     onClick={handleApprove}
                                     disabled={submitting || !dueDate}
-                                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"
+                                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 shadow-sm"
                                 >
                                     {submitting ? (
                                         <><Loader2 className="w-4 h-4 animate-spin" /> Approving...</>
@@ -520,3 +486,6 @@ export default function RequestsPage() {
         </div>
     );
 }
+
+
+

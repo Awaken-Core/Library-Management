@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 
-interface Admin {
+export interface Admin {
     id: string;
     name: string;
     email: string;
+    role?: string;
 }
 
 interface AuthState {
@@ -53,3 +54,5 @@ export const useAuthStore = create<AuthState>((set) => ({
         }
     },
 }));
+
+

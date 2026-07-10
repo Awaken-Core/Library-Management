@@ -9,7 +9,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { BookOpen, UserCircle, History, LogOut, Menu, X, Loader2, Search, Bell, BellRing, Check, MailOpen } from "lucide-react";
 import { useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 
 const NAV_ITEMS = [
     { name: "Browse Collection", href: "/", icon: Search },
@@ -28,16 +28,7 @@ export function ClientProvider({
     
     // UI State from Zustand
     const { isMobileMenuOpen, isNotificationsOpen, toggleMobileMenu, toggleNotifications, setNotificationsOpen, closeAll } = useUIStore();
-    
-    // React Query client
-    const [queryClient] = useState(() => new QueryClient({
-        defaultOptions: {
-            queries: {
-                staleTime: 60 * 1000, // 1 minute
-                refetchOnWindowFocus: false,
-            },
-        },
-    }));
+
 
     // Skip guard for login page
     const isLoginPage = pathname === "/login";
@@ -91,7 +82,6 @@ export function ClientProvider({
     };
 
     return (
-        <QueryClientProvider client={queryClient}>
             <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950">
             {/* Top Navigation */}
             <header className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-200 dark:border-zinc-800 sticky top-0 z-50">
@@ -271,6 +261,5 @@ export function ClientProvider({
                 </motion.div>
             </main>
         </div>
-        </QueryClientProvider>
     );
 }

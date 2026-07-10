@@ -1,5 +1,5 @@
 {
-  "name": "console-me",
+  "name": "Library",
   "private": true,
   "scripts": {
     "build": "turbo run build",

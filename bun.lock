@@ -14,6 +14,7 @@
       "name": "admin",
       "version": "0.1.0",
       "dependencies": {
+        "@tanstack/react-query": "^5.101.2",
         "@uploadthing/react": "^7.3.3",
         "axios": "^1.7.2",
         "framer-motion": "^12.0.0",
